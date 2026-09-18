@@ -1,0 +1,12 @@
+{
+  "id": "session-example",
+  "currentTime": 61.5,
+  "audioTracks": [
+    {
+      "index": 0,
+      "startOffset": 0,
+      "duration": 3600,
+      "contentUrl": "/s/item/example/0.mp3"
+    }
+  ]
+}

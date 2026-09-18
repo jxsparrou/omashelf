@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.jxsparrou.omashelf",
+  "name": "OmaShelf",
+  "version": "1.0.0",
+  "author": "jxSparrou",
+  "description": "A native Omarchy player for streaming, downloading, and syncing Audiobookshelf books.",
+  "license": "MIT",
+  "kinds": ["service", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaShelf",
+    "description": "Audiobookshelf library and playback controls",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
