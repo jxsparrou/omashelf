@@ -14,7 +14,7 @@ BarWidget {
   function close() { popupOpen = false }
   function playBook(book, offline) {
     if (!service || !book) return
-    if (offline || service.isDownloaded(book.id)) service.playOffline(book.id)
+    if (offline || service.isDownloaded(book.id)) service.playOffline(book.id, book._omashelfServer || "")
     else service.playItem(book)
     page = "player"
   }
@@ -43,7 +43,9 @@ BarWidget {
   Connections {
     target: root.service
     function onConnectedChanged() {
-      if (root.service && root.service.connected) root.popupOpen = true
+      if (!root.service) return
+      if (root.service.connected) root.popupOpen = true
+      else searchField.text = ""
     }
   }
 
@@ -63,11 +65,11 @@ BarWidget {
 
       Row {
         width: parent.width
-        height: Math.max(appTitle.implicitHeight, nowPlayingButton.implicitHeight)
+        height: Math.max(appTitle.implicitHeight, headerActions.implicitHeight)
 
         Text {
           id: appTitle
-          width: parent.width - nowPlayingButton.width
+          width: parent.width - headerActions.implicitWidth
           anchors.verticalCenter: parent.verticalCenter
           text: "OmaShelf"
           color: root.bar.foreground
@@ -76,13 +78,33 @@ BarWidget {
           font.bold: true
         }
 
-        Button {
-          id: nowPlayingButton
-          visible: root.service && root.service.currentItem
-          iconText: root.service && root.service.isPlaying ? "󰏤" : "󰐊"
-          text: "Now playing"
-          foreground: root.bar.foreground
-          onClicked: root.page = "player"
+        Row {
+          id: headerActions
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(6)
+
+          Button {
+            id: nowPlayingButton
+            visible: root.service && root.service.currentItem
+            iconText: root.service && root.service.isPlaying ? "󰏤" : "󰐊"
+            text: "Now playing"
+            foreground: root.bar.foreground
+            onClicked: root.page = "player"
+          }
+
+          Button {
+            visible: root.service
+            iconText: root.service && root.service.connected ? "󰍃" : "󰌾"
+            text: root.service && root.service.connected ? "Log out" : "Connect"
+            tooltipText: root.service && root.service.connected ? "Log out and switch server" : "Connect to a server"
+            enabled: root.service && !root.service.loggingOut
+            foreground: root.bar.foreground
+            onClicked: {
+              root.popupOpen = false
+              if (root.service.connected) root.service.logout(true)
+              else root.service.promptForCredentials()
+            }
+          }
         }
       }
 

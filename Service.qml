@@ -58,6 +58,13 @@ Item {
   property var downloadTracks: []
   property var downloadChapters: []
   property string downloadServer: ""
+  property string downloadToken: ""
+  property string downloadUserId: ""
+  property bool loggingOut: false
+  property bool promptAfterLogout: false
+  property bool clearingCredentials: false
+  property string localSessionServer: ""
+  property string localSessionUserId: ""
 
   readonly property bool isPlaying: player.playbackState === MediaPlayer.PlayingState
   readonly property real trackStartOffset: currentTracks.length > currentTrackIndex ? Number(currentTracks[currentTrackIndex].startOffset || 0) : 0
@@ -86,9 +93,18 @@ Item {
 
   function apiUrl(path) { return server + path }
 
+  function selectServer(serverUrl) {
+    var normalized = Api.normalizeServer(serverUrl)
+    if (server !== "" && normalized !== server) mediaProgress = ({})
+    server = normalized
+    return server
+  }
+
   function coverUrl(item, width) {
-    if (!item || !item.id || server === "") return ""
-    return apiUrl("/api/items/" + encodeURIComponent(item.id) + "/cover?width=" + Number(width || 160) + "&format=webp&ts=" + Number(item.updatedAt || 0))
+    if (!item || !item.id) return ""
+    var itemServer = item._omashelfServer || server
+    if (itemServer === "") return ""
+    return itemServer + "/api/items/" + encodeURIComponent(item.id) + "/cover?width=" + Number(width || 160) + "&format=webp&ts=" + Number(item.updatedAt || 0)
   }
 
   function progressForItem(itemId) {
@@ -96,24 +112,53 @@ Item {
   }
 
   function isDownloaded(itemId) {
-    return offlineBooks[offlineKey(itemId)] !== undefined || offlineBooks[itemId] !== undefined
+    return offlineBooks[offlineKey(itemId)] !== undefined
   }
 
   function offlineKey(itemId) {
     return server + "|" + itemId
   }
 
-  function offlineEntry(itemId) {
-    return offlineBooks[offlineKey(itemId)] || offlineBooks[itemId] || null
+  function offlineEntry(itemId, itemServer) {
+    var scoped = offlineBooks[(itemServer || server) + "|" + itemId]
+    if (scoped) return scoped
+    return !connected && !itemServer ? offlineBooks[itemId] || null : null
   }
 
   function offlineBookList() {
     var items = []
     for (var id in offlineBooks) {
       var entry = offlineBooks[id]
-      if (!connected || !entry.server || entry.server === server) items.push(entry.item)
+      if (!connected || !entry.server || entry.server === server) {
+        var item = Object.assign({}, entry.item)
+        item._omashelfServer = entry.server || ""
+        items.push(item)
+      }
     }
     return items
+  }
+
+  function downloadDirectory(itemId, itemServer) {
+    var value = String(itemServer || server)
+    var hash = 2166136261
+    for (var i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619)
+    return stateDirectory + "/downloads/" + (hash >>> 0).toString(16) + "/" + safeItemId(itemId)
+  }
+
+  function migrateOfflineBooks(entries) {
+    var migrated = ({})
+    var changed = false
+    for (var key in entries) {
+      var entry = entries[key]
+      if (key.indexOf("|") === -1 && entry && entry.server && entry.item && entry.item.id) {
+        migrated[entry.server + "|" + entry.item.id] = entry
+        changed = true
+      } else {
+        migrated[key] = entry
+      }
+    }
+    if (changed) offlineIndex.setText(JSON.stringify(migrated, null, 2) + "\n")
+    return migrated
   }
 
   function safeItemId(itemId) {
@@ -192,6 +237,11 @@ Item {
   }
 
   function finishRequest(rawOutput) {
+    if (loggingOut) {
+      activeRequest = null
+      requestOutputHandled = true
+      return
+    }
     if (requestOutputHandled || !activeRequest) return
     requestOutputHandled = true
     var raw = String(rawOutput || "")
@@ -216,7 +266,7 @@ Item {
   }
 
   function connect(serverUrl) {
-    server = Api.normalizeServer(serverUrl)
+    selectServer(serverUrl)
     error = ""
     if (server === "") { error = "Enter an Audiobookshelf server URL"; return }
     tokenLookup.command = ["secret-tool", "lookup"].concat(Api.keyringAttributes(server))
@@ -224,7 +274,7 @@ Item {
   }
 
   function authenticateWithToken(serverUrl, apiToken, method) {
-    server = Api.normalizeServer(serverUrl)
+    selectServer(serverUrl)
     token = String(apiToken || "").trim()
     connected = false
     if (server === "" || token === "") { error = "Server URL and API token are required"; return }
@@ -234,7 +284,7 @@ Item {
   }
 
   function authenticateWithPassword(serverUrl, username, password) {
-    server = Api.normalizeServer(serverUrl)
+    selectServer(serverUrl)
     token = ""
     connected = false
     error = ""
@@ -254,6 +304,7 @@ Item {
   }
 
   function finishPasswordLogin(rawOutput) {
+    if (loggingOut) return
     loading = false
     var raw = String(rawOutput || "")
     var marker = raw.lastIndexOf("\n")
@@ -317,6 +368,122 @@ Item {
       loadLibraries()
       syncOfflineSessions()
     })
+  }
+
+  function logout(promptForNewServer) {
+    if (loggingOut) return
+    loggingOut = true
+    promptAfterLogout = Boolean(promptForNewServer)
+    requestQueue = []
+    activeRequest = null
+    requestOutputHandled = true
+    syncingOfflineSessions = false
+    apiProcess.running = false
+    tokenLookup.running = false
+    loginProcess.running = false
+
+    if (currentItem && localPlayback) syncProgress(true)
+    else if (currentItem && duration > 0 && token !== "" && server !== "") startLogoutSync()
+    player.stop()
+    maybeFinishLogout()
+  }
+
+  function startLogoutSync() {
+    var now = Date.now()
+    var currentPosition = position
+    var progress = Api.progressFor(currentPosition, duration)
+    var body = { currentTime: currentPosition, duration: duration, timeListened: listenedSinceSync }
+    var path = sessionId !== ""
+      ? "/api/session/" + encodeURIComponent(sessionId) + "/close"
+      : "/api/me/progress/" + encodeURIComponent(currentItem.id)
+    var method = sessionId !== "" ? "POST" : "PATCH"
+    if (sessionId === "") body.progress = progress
+
+    var nextProgress = Object.assign({}, mediaProgress)
+    nextProgress[currentItem.id] = Object.assign({}, nextProgress[currentItem.id] || {}, {
+      libraryItemId: currentItem.id, duration: duration, currentTime: currentPosition,
+      progress: progress, isFinished: progress >= 0.995, lastUpdate: now
+    })
+    mediaProgress = nextProgress
+    listenedSinceSync = 0
+    logoutSyncProcess.payload = token + "\n" + JSON.stringify(body) + "\n"
+    logoutSyncProcess.command = [
+      "sh", "-c",
+      "set -eu; tmp=$(mktemp -d); trap 'rm -rf \"$tmp\"' EXIT; chmod 700 \"$tmp\"; IFS= read -r token; IFS= read -r body; printf 'Authorization: Bearer %s\\n' \"$token\" > \"$tmp/headers\"; printf '%s' \"$body\" > \"$tmp/body\"; chmod 600 \"$tmp/body\"; curl --silent --show-error --connect-timeout 3 --max-time 5 --request \"$1\" --url \"$2\" --header @\"$tmp/headers\" --header 'Content-Type: application/json' --data-binary @\"$tmp/body\" >/dev/null",
+      "omashelf-logout-sync", method, apiUrl(path)
+    ]
+    logoutSyncProcess.running = true
+  }
+
+  function maybeFinishLogout() {
+    if (!tokenStore.running && !logoutSyncProcess.running) finishLogout()
+  }
+
+  function finishLogout() {
+    if (clearingCredentials) return
+    clearingCredentials = true
+    var previousServer = server
+    player.stop()
+    player.source = ""
+    pendingSeekPosition = -1
+    token = ""
+    tokenToStore = ""
+    connected = false
+    authenticationMethod = ""
+    loading = false
+    error = ""
+    user = null
+    libraries = []
+    books = []
+    libraryBooks = []
+    continueBooks = []
+    recentBooks = []
+    searchBooks = []
+    searchQuery = ""
+    searching = false
+    mediaProgress = ({})
+    selectedLibraryId = ""
+    currentItem = null
+    currentTracks = []
+    currentChapters = []
+    currentTrackIndex = 0
+    sessionId = ""
+    sessionDuration = 0
+    listenedSinceSync = 0
+    localSessionId = ""
+    localSessionStartTime = 0
+    localSessionStartedAt = 0
+    localTimeListening = 0
+    localSessionServer = ""
+    localSessionUserId = ""
+    browsingOffline = false
+    requestQueue = []
+    activeRequest = null
+    requestOutputHandled = true
+    apiProcess.running = false
+    tokenLookup.running = false
+    loginProcess.running = false
+    serverFile.setText("")
+
+    if (previousServer === "") {
+      completeLogout()
+      return
+    }
+    tokenClear.command = ["secret-tool", "clear"].concat(Api.keyringAttributes(previousServer))
+    tokenClear.running = true
+  }
+
+  function completeLogout() {
+    if (apiProcess.running || loginProcess.running || tokenLookup.running || tokenStore.running) {
+      logoutCompletionTimer.restart()
+      return
+    }
+    clearingCredentials = false
+    loggingOut = false
+    if (promptAfterLogout) {
+      promptAfterLogout = false
+      promptForCredentials()
+    }
   }
 
   function loadLibraries() {
@@ -476,7 +643,7 @@ Item {
     mediaProgress = nextProgress
     if (localPlayback) {
       queueOfflineSession(payload, now)
-      if (connected) syncOfflineSessions()
+      if (connected && !loggingOut) syncOfflineSessions()
       return
     }
     if (sessionId !== "") {
@@ -497,6 +664,8 @@ Item {
     downloadTracks = currentTracks.slice()
     downloadChapters = currentChapters.slice()
     downloadServer = server
+    downloadToken = token
+    downloadUserId = user ? user.id : ""
     downloadStatus = "Downloading " + title
     downloadBytes = 0
     downloadCompletedBytes = 0
@@ -513,7 +682,10 @@ Item {
     if (!downloadItem) return
     if (downloadTrackIndex >= downloadTracks.length) {
       var next = Object.assign({}, offlineBooks)
-      next[downloadServer + "|" + downloadItem.id] = { server: downloadServer, item: downloadItem, tracks: downloadTracks, chapters: downloadChapters }
+      next[downloadServer + "|" + downloadItem.id] = {
+        server: downloadServer, userId: downloadUserId, item: downloadItem,
+        tracks: downloadTracks, chapters: downloadChapters
+      }
       offlineBooks = next
       offlineIndex.setText(JSON.stringify(offlineBooks, null, 2) + "\n")
       downloadStatus = "Downloaded " + downloadItem.media.metadata.title
@@ -524,23 +696,36 @@ Item {
       downloadTracks = []
       downloadChapters = []
       downloadServer = ""
+      downloadToken = ""
+      downloadUserId = ""
       return
     }
     var track = downloadTracks[downloadTrackIndex]
     var url = trustedMediaUrl(track.contentUrl, downloadServer)
     var itemId = safeItemId(downloadItem.id)
-    if (url === "" || itemId === "") { error = "Download rejected an unsafe server response"; downloadTrackIndex = -1; return }
-    var destination = stateDirectory + "/downloads/" + itemId + "/" + downloadTrackIndex + ".audio"
+    if (url === "" || itemId === "") {
+      error = "Download rejected an unsafe server response"
+      downloadTrackIndex = -1
+      downloadItem = null
+      downloadTracks = []
+      downloadChapters = []
+      downloadServer = ""
+      downloadToken = ""
+      downloadUserId = ""
+      return
+    }
+    var destination = downloadDirectory(itemId, downloadServer) + "/" + downloadTrackIndex + ".audio"
     downloadPath = destination
-    downloadProcess.payload = token + "\n"
+    downloadProcess.payload = downloadToken + "\n"
     downloadProcess.command = ["sh", "-c", "set -eu; umask 077; IFS= read -r token; mkdir -p \"$(dirname \"$1\")\"; tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; chmod 600 \"$tmp\"; printf 'Authorization: Bearer %s\\n' \"$token\" > \"$tmp\"; curl --fail --silent --show-error --continue-at - --output \"$1\" --header @\"$tmp\" --url \"$2\"", "omashelf-download", destination, url]
     downloadProcess.running = true
   }
 
-  function playOffline(itemId) {
-    var saved = offlineEntry(itemId)
+  function playOffline(itemId, itemServer) {
+    var saved = offlineEntry(itemId, itemServer)
     if (!saved) return
     if (currentItem) syncProgress(true)
+    if (saved.server) selectServer(saved.server)
     currentItem = saved.item
     currentTracks = saved.tracks
     currentChapters = saved.chapters && saved.chapters.length > 0 ? saved.chapters : chaptersFromTracks(saved.tracks)
@@ -549,6 +734,8 @@ Item {
     sessionDuration = Number(saved.item.media.duration || 0)
     playbackStartedAt = Date.now()
     localSessionId = newUuid()
+    localSessionServer = saved.server || itemServer || server
+    localSessionUserId = saved.userId || ""
     var savedProgress = progressForItem(itemId)
     var resumeTime = savedProgress && !savedProgress.isFinished ? Number(savedProgress.currentTime || 0) : 0
     localSessionStartTime = resumeTime
@@ -571,13 +758,13 @@ Item {
 
   function queueOfflineSession(progress, timestamp) {
     var session = {
-      id: localSessionId || newUuid(), userId: user ? user.id : "", libraryId: currentItem.libraryId,
+      id: localSessionId || newUuid(), userId: localSessionUserId, libraryId: currentItem.libraryId,
       libraryItemId: currentItem.id, episodeId: null, mediaType: "book", playMethod: 3,
       bookId: currentItem.media ? currentItem.media.id : null,
       displayTitle: title, displayAuthor: author, duration: duration, currentTime: position,
       timeListening: localTimeListening, startTime: localSessionStartTime,
       startedAt: localSessionStartedAt || timestamp, updatedAt: timestamp,
-      serverUrl: server,
+      serverUrl: localSessionServer,
       mediaPlayer: "QtMultimedia",
       deviceInfo: { deviceId: "omashelf", clientName: "OmaShelf", clientVersion: "1.0.0" },
       mediaMetadata: currentItem.media ? currentItem.media.metadata : null
@@ -604,7 +791,8 @@ Item {
     syncingOfflineSessions = true
     var sent = []
     for (var index = 0; index < queuedSessions.length; index++) {
-      if (!queuedSessions[index].serverUrl || queuedSessions[index].serverUrl === server) sent.push(queuedSessions[index])
+      var queued = queuedSessions[index]
+      if (queued.serverUrl === server && user && queued.userId && queued.userId === user.id) sent.push(queued)
     }
     if (sent.length === 0) { syncingOfflineSessions = false; return }
     request("POST", "/api/session/local-all", {
@@ -619,7 +807,7 @@ Item {
         var current = queuedSessions[i]
         var sentSession = null
         var result = null
-        if (current.serverUrl && current.serverUrl !== server) { remaining.push(current); continue }
+        if (current.serverUrl !== server || !user || !current.userId || current.userId !== user.id) { remaining.push(current); continue }
         for (var j = 0; j < sent.length; j++) if (sent[j].id === current.id) { sentSession = sent[j]; break }
         for (var k = 0; k < results.length; k++) if (results[k].id === current.id) { result = results[k]; break }
         if (!sentSession || !result || !result.success || current.updatedAt > sentSession.updatedAt) remaining.push(current)
@@ -690,6 +878,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (root.loggingOut) return
         root.token = String(text || "").trim()
         if (root.token === "") root.error = "Not connected"
         else {
@@ -699,6 +888,7 @@ Item {
       }
     }
     onExited: function(code) {
+      if (root.loggingOut) return
       if (code !== 0) root.error = "Not connected"
     }
   }
@@ -723,8 +913,37 @@ Item {
     }
     onExited: {
       root.tokenToStore = ""
+      if (root.loggingOut) root.maybeFinishLogout()
     }
   }
+
+  Process {
+    id: logoutSyncProcess
+    property string payload: ""
+    stdinEnabled: true
+    onStarted: {
+      write(payload)
+      payload = ""
+    }
+    stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { waitForEnd: true }
+    onExited: root.maybeFinishLogout()
+  }
+
+  Process {
+    id: tokenClear
+    onExited: function(code) {
+      if (code === 0 || code === 1) root.completeLogout()
+      else {
+        root.clearingCredentials = false
+        root.loggingOut = false
+        root.promptAfterLogout = false
+        root.error = "Could not remove the saved credential"
+      }
+    }
+  }
+
+  Timer { id: logoutCompletionTimer; interval: 50; repeat: false; onTriggered: root.completeLogout() }
 
   IpcHandler {
     target: "omashelf"
@@ -816,11 +1035,13 @@ Item {
         root.downloadTracks = []
         root.downloadChapters = []
         root.downloadServer = ""
+        root.downloadToken = ""
+        root.downloadUserId = ""
         return
       }
       var tracks = root.downloadTracks.slice()
       var track = Object.assign({}, tracks[root.downloadTrackIndex])
-      track.localPath = root.stateDirectory + "/downloads/" + root.safeItemId(root.downloadItem.id) + "/" + root.downloadTrackIndex + ".audio"
+      track.localPath = root.downloadDirectory(root.downloadItem.id, root.downloadServer) + "/" + root.downloadTrackIndex + ".audio"
       tracks[root.downloadTrackIndex] = track
       root.downloadTracks = tracks
       root.downloadCompletedBytes += Number(track.metadata && track.metadata.size ? track.metadata.size : track.bitRate * track.duration / 8 || 0)
@@ -860,7 +1081,7 @@ Item {
     path: root.stateDirectory + "/downloads.json"
     printErrors: false
     onLoaded: {
-      try { root.offlineBooks = JSON.parse(text()) } catch (_) { root.offlineBooks = ({}) }
+      try { root.offlineBooks = root.migrateOfflineBooks(JSON.parse(text())) } catch (_) { root.offlineBooks = ({}) }
     }
     onLoadFailed: root.offlineBooks = ({})
   }

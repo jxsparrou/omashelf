@@ -58,6 +58,7 @@ Username and password credentials are sent only to the configured server's `/log
 - Selecting a downloaded book from any page prefers its local audio file.
 - **Playing** provides book and chapter seeking, transport controls, volume, source status, and downloads.
 - Hardware play/pause keys work through MPRIS while OmaShelf has a loaded book.
+- Use **Log out** in the panel header to forget the current server credentials and connect to another server. Downloads are kept.
 
 Downloads and queued offline sessions are stored under `~/.local/state/omarchy-audiobookshelf/`. The state directory is restricted to the current user. Downloads can be large and are not removed automatically.
 
