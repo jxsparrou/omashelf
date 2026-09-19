@@ -18,7 +18,8 @@ SpokenShelf is a native Omarchy shell player for [Audiobookshelf](https://www.au
 
 - Omarchy with the plugin-capable shell.
 - An Audiobookshelf server. SpokenShelf is tested against Audiobookshelf 2.36.1.
-- `curl`, `zenity`, `secret-tool` (from `libsecret`), Python 3, and the Python `dbus-next` package.
+- `curl`, `zenity`, and `secret-tool` (from `libsecret`).
+- Optional: Python 3 and the Python `dbus-next` package for MPRIS media-key and desktop media controls.
 - Qt Multimedia support for the audio formats stored by your server.
 
 Install missing command-line dependencies with:
@@ -28,6 +29,7 @@ omarchy pkg add curl zenity libsecret python python-dbus-next
 ```
 
 SpokenShelf does not install packages, request elevated privileges, or modify system configuration.
+Missing connection-form and MPRIS dependencies are reported inside the SpokenShelf panel.
 
 ## Install
 

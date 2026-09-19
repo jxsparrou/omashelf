@@ -65,6 +65,16 @@ Item {
   property bool clearingCredentials: false
   property string localSessionServer: ""
   property string localSessionUserId: ""
+  property bool zenityAvailable: false
+  property bool zenityChecked: false
+  property bool credentialPromptPending: false
+  property bool mprisAvailable: false
+  property int mprisFailureCount: 0
+  property string dependencyError: ""
+  property string dependencyWarning: ""
+
+  signal credentialPromptStarting()
+  signal credentialPromptUnavailable()
 
   readonly property bool isPlaying: player.playbackState === MediaPlayer.PlayingState
   readonly property real trackStartOffset: currentTracks.length > currentTrackIndex ? Number(currentTracks[currentTrackIndex].startOffset || 0) : 0
@@ -325,6 +335,19 @@ Item {
 
   function promptForCredentials() {
     if (credentialPrompt.running) return
+    if (!zenityChecked) {
+      credentialPromptPending = true
+      return
+    }
+    if (!zenityAvailable) {
+      credentialPromptPending = false
+      dependencyError = "Cannot open the connection form: install zenity with `omarchy pkg add zenity`."
+      credentialPromptUnavailable()
+      return
+    }
+    credentialPromptPending = false
+    dependencyError = ""
+    credentialPromptStarting()
     credentialPrompt.command = [
       "zenity", "--forms", "--title=SpokenShelf", "--text=Connect to your Audiobookshelf server",
       "--add-entry=Server URL", "--add-entry=Username (optional)", "--add-password=Password (optional)",
@@ -352,8 +375,10 @@ Item {
         connected = false
         tokenToStore = ""
         error = data
-        connectionErrorDialog.command = ["zenity", "--error", "--title=SpokenShelf", "--text=" + data]
-        connectionErrorDialog.running = true
+        if (zenityAvailable) {
+          connectionErrorDialog.command = ["zenity", "--error", "--title=SpokenShelf", "--text=" + data]
+          connectionErrorDialog.running = true
+        }
         return
       }
       connected = true
@@ -978,7 +1003,11 @@ Item {
         localPlayback: root.localPlayback,
         queuedSessions: root.queuedSessions.length,
         downloading: root.downloading,
-        volume: root.playbackVolume
+        volume: root.playbackVolume,
+        zenityAvailable: root.zenityAvailable,
+        mprisAvailable: root.mprisAvailable,
+        dependencyError: root.dependencyError,
+        dependencyWarning: root.dependencyWarning
       })
     }
 
@@ -1112,7 +1141,8 @@ Item {
 
   Component.onCompleted: {
     stateDirectoryInit.running = true
-    mprisBridge.running = true
+    zenityCheck.running = true
+    mprisCheck.running = true
     serverFile.reload()
   }
   Component.onDestruction: syncProgress(true)
@@ -1123,10 +1153,45 @@ Item {
   }
 
   Process {
-    id: mprisBridge
-    command: ["python", Qt.resolvedUrl("mpris.py").toString().replace(/^file:\/\//, "")]
-    onExited: mprisRestart.restart()
+    id: zenityCheck
+    command: ["sh", "-c", "command -v zenity >/dev/null 2>&1"]
+    onExited: function(code) {
+      root.zenityChecked = true
+      root.zenityAvailable = code === 0
+      root.dependencyError = root.zenityAvailable
+        ? ""
+        : "Cannot open the connection form: install zenity with `omarchy pkg add zenity`."
+      if (root.credentialPromptPending) root.promptForCredentials()
+    }
   }
 
-  Timer { id: mprisRestart; interval: 5000; repeat: false; onTriggered: if (!mprisBridge.running) mprisBridge.running = true }
+  Process {
+    id: mprisCheck
+    command: ["sh", "-c", "command -v python >/dev/null 2>&1 && python -c 'import dbus_next' >/dev/null 2>&1"]
+    onExited: function(code) {
+      root.mprisAvailable = code === 0
+      root.dependencyWarning = root.mprisAvailable
+        ? ""
+        : "Media-key support is unavailable. Install python-dbus-next to enable MPRIS controls."
+      root.mprisFailureCount = 0
+      if (root.mprisAvailable) mprisBridge.running = true
+    }
+  }
+
+  Process {
+    id: mprisBridge
+    command: ["python", Qt.resolvedUrl("mpris.py").toString().replace(/^file:\/\//, "")]
+    onExited: function(code) {
+      if (!root.mprisAvailable) return
+      root.mprisFailureCount += 1
+      if (root.mprisFailureCount >= 3) {
+        root.mprisAvailable = false
+        root.dependencyWarning = "Media-key support is unavailable because the MPRIS bridge could not start."
+      } else {
+        mprisRestart.restart()
+      }
+    }
+  }
+
+  Timer { id: mprisRestart; interval: 5000; repeat: false; onTriggered: if (root.mprisAvailable && !mprisBridge.running) mprisBridge.running = true }
 }

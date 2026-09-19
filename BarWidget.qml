@@ -32,10 +32,12 @@ BarWidget {
 
     onPressed: function(mouseButton) {
       if (!root.service) return
-      if (!root.service.connected && Object.keys(root.service.offlineBooks).length === 0) root.service.promptForCredentials()
-      else {
-        if (!root.service.connected) root.page = "offline"
-        root.popupOpen = !root.popupOpen
+      var opening = !root.popupOpen
+      root.popupOpen = opening
+      if (opening && !root.service.connected) {
+        var hasDownloads = Object.keys(root.service.offlineBooks).length > 0
+        root.page = hasDownloads ? "offline" : "home"
+        if (!hasDownloads) root.service.promptForCredentials()
       }
     }
   }
@@ -47,6 +49,8 @@ BarWidget {
       if (root.service.connected) root.popupOpen = true
       else searchField.text = ""
     }
+    function onCredentialPromptStarting() { root.popupOpen = false }
+    function onCredentialPromptUnavailable() { root.popupOpen = true }
   }
 
   KeyboardPanel {
@@ -100,9 +104,12 @@ BarWidget {
             enabled: root.service && !root.service.loggingOut
             foreground: root.bar.foreground
             onClicked: {
-              root.popupOpen = false
-              if (root.service.connected) root.service.logout(true)
-              else root.service.promptForCredentials()
+              if (root.service.connected) {
+                root.popupOpen = false
+                root.service.logout(true)
+              } else {
+                root.service.promptForCredentials()
+              }
             }
           }
         }
@@ -133,6 +140,28 @@ BarWidget {
             onClicked: root.page = modelData.value
           }
         }
+      }
+
+      Text {
+        visible: root.service && root.service.dependencyError !== ""
+        width: parent.width
+        text: root.service ? root.service.dependencyError : ""
+        textFormat: Text.PlainText
+        color: "tomato"
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.Wrap
+      }
+
+      Text {
+        visible: root.service && root.service.dependencyWarning !== ""
+        width: parent.width
+        text: root.service ? root.service.dependencyWarning : ""
+        textFormat: Text.PlainText
+        color: "goldenrod"
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.Wrap
       }
 
       Text {
