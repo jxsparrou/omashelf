@@ -72,6 +72,8 @@ Item {
   property int mprisFailureCount: 0
   property string dependencyError: ""
   property string dependencyWarning: ""
+  property string selectedAudioOutputId: ""
+  property var audioOutputOptions: []
 
   signal credentialPromptStarting()
   signal credentialPromptUnavailable()
@@ -226,6 +228,44 @@ Item {
 
   function setVolume(value) {
     audioOutput.volume = Math.max(0, Math.min(1, Number(value || 0)))
+  }
+
+  function refreshAudioOutputs() {
+    var defaultDescription = String(mediaDevices.defaultAudioOutput.description || "")
+    var options = [{
+      value: "",
+      label: defaultDescription === "" ? "System default" : "System default (" + defaultDescription + ")"
+    }]
+    var selectedFound = selectedAudioOutputId === ""
+    for (var i = 0; i < mediaDevices.audioOutputs.length; i++) {
+      var device = mediaDevices.audioOutputs[i]
+      var deviceId = String(device.id)
+      options.push({ value: deviceId, label: String(device.description || "Audio output " + (i + 1)) })
+      if (deviceId === selectedAudioOutputId) selectedFound = true
+    }
+    audioOutputOptions = options
+    if (!selectedFound) selectedAudioOutputId = ""
+    applyAudioOutput()
+  }
+
+  function setAudioOutput(deviceId) {
+    selectedAudioOutputId = String(deviceId || "")
+    applyAudioOutput()
+  }
+
+  function applyAudioOutput() {
+    if (selectedAudioOutputId === "") {
+      audioOutput.device = mediaDevices.defaultAudioOutput
+      return
+    }
+    for (var i = 0; i < mediaDevices.audioOutputs.length; i++) {
+      if (String(mediaDevices.audioOutputs[i].id) === selectedAudioOutputId) {
+        audioOutput.device = mediaDevices.audioOutputs[i]
+        return
+      }
+    }
+    selectedAudioOutputId = ""
+    audioOutput.device = mediaDevices.defaultAudioOutput
   }
 
   function request(method, path, body, callback) {
@@ -861,6 +901,11 @@ Item {
     onErrorOccurred: function(error, errorString) { root.error = "Playback failed: " + errorString }
   }
 
+  MediaDevices {
+    id: mediaDevices
+    onAudioOutputsChanged: root.refreshAudioOutputs()
+  }
+
   Timer {
     interval: 1000
     running: root.isPlaying
@@ -1007,7 +1052,10 @@ Item {
         zenityAvailable: root.zenityAvailable,
         mprisAvailable: root.mprisAvailable,
         dependencyError: root.dependencyError,
-        dependencyWarning: root.dependencyWarning
+        dependencyWarning: root.dependencyWarning,
+        audioOutputs: mediaDevices.audioOutputs.length,
+        selectedAudioOutputId: root.selectedAudioOutputId,
+        selectedAudioOutput: audioOutput.device.description
       })
     }
 
@@ -1143,6 +1191,7 @@ Item {
     stateDirectoryInit.running = true
     zenityCheck.running = true
     mprisCheck.running = true
+    refreshAudioOutputs()
     serverFile.reload()
   }
   Component.onDestruction: syncProgress(true)

@@ -10,6 +10,7 @@ SpokenShelf is a native Omarchy shell player for [Audiobookshelf](https://www.au
 - Resumable downloads and offline playback.
 - Offline progress reconciliation after reconnecting.
 - Book and chapter seek controls with elapsed and remaining time.
+- Selectable audio output with automatic system-default tracking.
 - Playback volume and 30-second skip controls.
 - MPRIS integration for keyboard media keys and desktop media controls.
 - API-token or local username/password authentication.

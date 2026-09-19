@@ -49,6 +49,7 @@ BarWidget {
       if (root.service.connected) root.popupOpen = true
       else searchField.text = ""
     }
+    function onSelectedAudioOutputIdChanged() { audioOutputDropdown.value = root.service.selectedAudioOutputId }
     function onCredentialPromptStarting() { root.popupOpen = false }
     function onCredentialPromptUnavailable() { root.popupOpen = true }
   }
@@ -61,7 +62,7 @@ BarWidget {
     open: root.popupOpen
     focusTarget: root.page === "library" ? searchField : null
     contentWidth: popup.fittedContentWidth(Style.space(480))
-    contentHeight: popup.fittedContentHeight(root.page === "player" ? Style.space(520) : Style.space(590), Style.space(680))
+    contentHeight: popup.fittedContentHeight(root.page === "player" ? Style.space(570) : Style.space(590), Style.space(680))
 
     Column {
       anchors.fill: parent
@@ -611,6 +612,32 @@ BarWidget {
               color: Qt.darker(root.bar.foreground, 1.35)
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.caption
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                width: Style.space(58)
+                anchors.verticalCenter: parent.verticalCenter
+                text: "󰓃 Output"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              Dropdown {
+                id: audioOutputDropdown
+                width: parent.width - Style.space(58) - parent.spacing
+                anchors.verticalCenter: parent.verticalCenter
+                showLabel: false
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                options: root.service ? root.service.audioOutputOptions : []
+                value: root.service ? root.service.selectedAudioOutputId : ""
+                onChanged: function(value) { if (root.service) root.service.setAudioOutput(value) }
+              }
             }
 
             Row {
