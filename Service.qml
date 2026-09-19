@@ -21,6 +21,9 @@ Item {
   property var recentBooks: []
   property var searchBooks: []
   property string searchQuery: ""
+  property int searchGeneration: 0
+  property bool libraryLoading: false
+  property var librarySearchIndex: []
   property var mediaProgress: ({})
   property bool searching: false
   property string selectedLibraryId: ""
@@ -505,7 +508,10 @@ Item {
     recentBooks = []
     searchBooks = []
     searchQuery = ""
+    searchGeneration += 1
     searching = false
+    libraryLoading = false
+    librarySearchIndex = []
     mediaProgress = ({})
     selectedLibraryId = ""
     currentItem = null
@@ -565,12 +571,20 @@ Item {
   function loadLibrary(id) {
     browsingOffline = false
     selectedLibraryId = id
+    searchGeneration += 1
+    searchBooks = []
+    libraryLoading = true
+    librarySearchIndex = []
     loading = true
     request("GET", "/api/libraries/" + encodeURIComponent(id) + "/items?mediaType=book&sort=media.metadata.title&limit=0", null, function(ok, data) {
+      if (id !== selectedLibraryId) return
       loading = false
-      if (!ok) { error = data; return }
+      libraryLoading = false
+      if (!ok) { searching = false; error = data; return }
       libraryBooks = data.results || []
+      rebuildLibrarySearchIndex()
       books = libraryBooks
+      if (searchQuery !== "") searchLibrary(searchQuery)
     })
     loadHome(id)
     loadProgress()
@@ -604,21 +618,65 @@ Item {
   function searchLibrary(query) {
     var term = String(query || "").trim()
     searchQuery = term
+    searchGeneration += 1
+    var generation = searchGeneration
     if (term === "") {
       searching = false
       searchBooks = []
       return
     }
     searching = true
-    request("GET", "/api/libraries/" + encodeURIComponent(selectedLibraryId) + "/search?q=" + encodeURIComponent(term) + "&limit=50", null, function(ok, data) {
-      if (term !== searchQuery) return
+    if (selectedLibraryId === "") { searching = false; return }
+    if (libraryLoading) return
+    var libraryId = selectedLibraryId
+    var localMatches = localSearchMatches(term)
+    searchBooks = localMatches
+    request("GET", "/api/libraries/" + encodeURIComponent(libraryId) + "/search?q=" + encodeURIComponent(term) + "&limit=50", null, function(ok, data) {
+      if (generation !== searchGeneration || libraryId !== selectedLibraryId) return
       searching = false
       if (!ok) { error = data; return }
       var results = data.book || []
       var items = []
-      for (var i = 0; i < results.length; i++) if (results[i].libraryItem) items.push(results[i].libraryItem)
+      var seen = ({})
+      for (var i = 0; i < results.length; i++) {
+        if (results[i].libraryItem && !seen[results[i].libraryItem.id]) {
+          seen[results[i].libraryItem.id] = true
+          items.push(results[i].libraryItem)
+        }
+      }
+      var currentLocalMatches = localSearchMatches(term)
+      for (var j = 0; j < currentLocalMatches.length; j++) {
+        if (!seen[currentLocalMatches[j].id]) {
+          seen[currentLocalMatches[j].id] = true
+          items.push(currentLocalMatches[j])
+        }
+      }
       searchBooks = items
     })
+  }
+
+  function rebuildLibrarySearchIndex() {
+    var index = []
+    for (var i = 0; i < libraryBooks.length; i++) {
+      var item = libraryBooks[i]
+      var metadata = item && item.media ? item.media.metadata || ({}) : ({})
+      var fields = [
+        metadata.title, metadata.subtitle, metadata.authorName, metadata.authorNameLF,
+        metadata.seriesName, metadata.narratorName, metadata.isbn, metadata.asin
+      ]
+      for (var j = 0; j < fields.length; j++) fields[j] = String(fields[j] || "")
+      index.push({ item: item, text: fields.join("\n").toLowerCase() })
+    }
+    librarySearchIndex = index
+  }
+
+  function localSearchMatches(term) {
+    var needle = String(term || "").toLowerCase()
+    var matches = []
+    for (var i = 0; i < librarySearchIndex.length; i++) {
+      if (librarySearchIndex[i].text.indexOf(needle) !== -1) matches.push(librarySearchIndex[i].item)
+    }
+    return matches
   }
 
   function playItem(item) {

@@ -56,6 +56,15 @@ omarchy bar put io.github.jxsparrou.spokenshelf --section right
 
 The rename does not remove saved credentials, downloads, or queued listening progress.
 
+## Update
+
+Update the Git-managed plugin and restart the shell so QML changes are loaded reliably:
+
+```sh
+omarchy plugin update io.github.jxsparrou.spokenshelf --yes
+omarchy restart shell
+```
+
 ## Connect
 
 Open SpokenShelf from the status bar and enter your Audiobookshelf server URL. Then use either:
