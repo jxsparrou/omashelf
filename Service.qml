@@ -102,7 +102,7 @@ Item {
 
   function coverUrl(item, width) {
     if (!item || !item.id) return ""
-    var itemServer = item._omashelfServer || server
+    var itemServer = item._spokenShelfServer || server
     if (itemServer === "") return ""
     return itemServer + "/api/items/" + encodeURIComponent(item.id) + "/cover?width=" + Number(width || 160) + "&format=webp&ts=" + Number(item.updatedAt || 0)
   }
@@ -131,7 +131,7 @@ Item {
       var entry = offlineBooks[id]
       if (!connected || !entry.server || entry.server === server) {
         var item = Object.assign({}, entry.item)
-        item._omashelfServer = entry.server || ""
+        item._spokenShelfServer = entry.server || ""
         items.push(item)
       }
     }
@@ -231,7 +231,7 @@ Item {
     apiProcess.command = [
       "sh", "-c",
       "set -eu; tmp=$(mktemp -d); trap 'rm -rf \"$tmp\"' EXIT; chmod 700 \"$tmp\"; IFS= read -r token; IFS= read -r body; printf '%s\\n' 'Accept: application/json' > \"$tmp/headers\"; if [ -n \"$token\" ]; then printf 'Authorization: Bearer %s\\n' \"$token\" >> \"$tmp/headers\"; fi; if [ -n \"$body\" ]; then printf '%s' \"$body\" > \"$tmp/body\"; chmod 600 \"$tmp/body\"; curl --silent --show-error --request \"$1\" --url \"$2\" --header @\"$tmp/headers\" --header 'Content-Type: application/json' --data-binary @\"$tmp/body\" --write-out '\\n%{http_code}'; else curl --silent --show-error --request \"$1\" --url \"$2\" --header @\"$tmp/headers\" --write-out '\\n%{http_code}'; fi",
-      "omashelf-api", activeRequest.method, apiUrl(activeRequest.path)
+      "spokenshelf-api", activeRequest.method, apiUrl(activeRequest.path)
     ]
     apiProcess.running = true
   }
@@ -298,7 +298,7 @@ Item {
     loginProcess.command = [
       "sh", "-c",
       "set -eu; tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; chmod 600 \"$tmp\"; IFS= read -r body; printf '%s' \"$body\" > \"$tmp\"; curl --silent --show-error --request POST --header 'Accept: application/json' --header 'Content-Type: application/json' --data-binary @\"$tmp\" --write-out '\\n%{http_code}' --url \"$1\"",
-      "omashelf-login", server + "/login"
+      "spokenshelf-login", server + "/login"
     ]
     loginProcess.running = true
   }
@@ -326,7 +326,7 @@ Item {
   function promptForCredentials() {
     if (credentialPrompt.running) return
     credentialPrompt.command = [
-      "zenity", "--forms", "--title=OmaShelf", "--text=Connect to your Audiobookshelf server",
+      "zenity", "--forms", "--title=SpokenShelf", "--text=Connect to your Audiobookshelf server",
       "--add-entry=Server URL", "--add-entry=Username (optional)", "--add-password=Password (optional)",
       "--add-password=API token (alternative)", "--separator=\t"
     ]
@@ -352,7 +352,7 @@ Item {
         connected = false
         tokenToStore = ""
         error = data
-        connectionErrorDialog.command = ["zenity", "--error", "--title=OmaShelf", "--text=" + data]
+        connectionErrorDialog.command = ["zenity", "--error", "--title=SpokenShelf", "--text=" + data]
         connectionErrorDialog.running = true
         return
       }
@@ -362,7 +362,7 @@ Item {
       serverFile.setText(server + "\n")
       if (tokenToStore !== "") {
         tokenStore.payload = tokenToStore
-        tokenStore.command = ["sh", "-c", "IFS= read -r token; printf %s \"$token\" | secret-tool store --label=\"OmaShelf ($1)\" service omarchy-audiobookshelf server \"$1\"", "omashelf-store", server]
+        tokenStore.command = ["sh", "-c", "IFS= read -r token; printf %s \"$token\" | secret-tool store --label=\"SpokenShelf ($1)\" service omarchy-audiobookshelf server \"$1\"", "spokenshelf-store", server]
         tokenStore.running = true
       }
       loadLibraries()
@@ -410,7 +410,7 @@ Item {
     logoutSyncProcess.command = [
       "sh", "-c",
       "set -eu; tmp=$(mktemp -d); trap 'rm -rf \"$tmp\"' EXIT; chmod 700 \"$tmp\"; IFS= read -r token; IFS= read -r body; printf 'Authorization: Bearer %s\\n' \"$token\" > \"$tmp/headers\"; printf '%s' \"$body\" > \"$tmp/body\"; chmod 600 \"$tmp/body\"; curl --silent --show-error --connect-timeout 3 --max-time 5 --request \"$1\" --url \"$2\" --header @\"$tmp/headers\" --header 'Content-Type: application/json' --data-binary @\"$tmp/body\" >/dev/null",
-      "omashelf-logout-sync", method, apiUrl(path)
+      "spokenshelf-logout-sync", method, apiUrl(path)
     ]
     logoutSyncProcess.running = true
   }
@@ -560,7 +560,7 @@ Item {
     if (currentItem) syncProgress(true)
     loading = true
     request("POST", "/api/items/" + encodeURIComponent(item.id) + "/play", {
-      deviceInfo: { deviceId: "omashelf", clientName: "OmaShelf", clientVersion: "1.0.0" },
+      deviceInfo: { deviceId: "spokenshelf", clientName: "SpokenShelf", clientVersion: "1.0.0" },
       supportedMimeTypes: ["audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/flac"],
       forceDirectPlay: true,
       forceTranscode: false,
@@ -717,7 +717,7 @@ Item {
     var destination = downloadDirectory(itemId, downloadServer) + "/" + downloadTrackIndex + ".audio"
     downloadPath = destination
     downloadProcess.payload = downloadToken + "\n"
-    downloadProcess.command = ["sh", "-c", "set -eu; umask 077; IFS= read -r token; mkdir -p \"$(dirname \"$1\")\"; tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; chmod 600 \"$tmp\"; printf 'Authorization: Bearer %s\\n' \"$token\" > \"$tmp\"; curl --fail --silent --show-error --continue-at - --output \"$1\" --header @\"$tmp\" --url \"$2\"", "omashelf-download", destination, url]
+    downloadProcess.command = ["sh", "-c", "set -eu; umask 077; IFS= read -r token; mkdir -p \"$(dirname \"$1\")\"; tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; chmod 600 \"$tmp\"; printf 'Authorization: Bearer %s\\n' \"$token\" > \"$tmp\"; curl --fail --silent --show-error --continue-at - --output \"$1\" --header @\"$tmp\" --url \"$2\"", "spokenshelf-download", destination, url]
     downloadProcess.running = true
   }
 
@@ -766,7 +766,7 @@ Item {
       startedAt: localSessionStartedAt || timestamp, updatedAt: timestamp,
       serverUrl: localSessionServer,
       mediaPlayer: "QtMultimedia",
-      deviceInfo: { deviceId: "omashelf", clientName: "OmaShelf", clientVersion: "1.0.0" },
+      deviceInfo: { deviceId: "spokenshelf", clientName: "SpokenShelf", clientVersion: "1.0.0" },
       mediaMetadata: currentItem.media ? currentItem.media.metadata : null
     }
     localSessionId = session.id
@@ -792,11 +792,15 @@ Item {
     var sent = []
     for (var index = 0; index < queuedSessions.length; index++) {
       var queued = queuedSessions[index]
-      if (queued.serverUrl === server && user && queued.userId && queued.userId === user.id) sent.push(queued)
+      if (queued.serverUrl === server && user && queued.userId && queued.userId === user.id) {
+        sent.push(Object.assign({}, queued, {
+          deviceInfo: { deviceId: "spokenshelf", clientName: "SpokenShelf", clientVersion: "1.0.0" }
+        }))
+      }
     }
     if (sent.length === 0) { syncingOfflineSessions = false; return }
     request("POST", "/api/session/local-all", {
-      deviceInfo: { deviceId: "omashelf", clientName: "OmaShelf", clientVersion: "1.0.0" },
+      deviceInfo: { deviceId: "spokenshelf", clientName: "SpokenShelf", clientVersion: "1.0.0" },
       sessions: sent
     }, function(ok, data) {
       syncingOfflineSessions = false
@@ -946,7 +950,7 @@ Item {
   Timer { id: logoutCompletionTimer; interval: 50; repeat: false; onTriggered: root.completeLogout() }
 
   IpcHandler {
-    target: "omashelf"
+    target: "spokenshelf"
 
     function status(): string {
       return JSON.stringify({
@@ -1115,7 +1119,7 @@ Item {
 
   Process {
     id: stateDirectoryInit
-    command: ["sh", "-c", "umask 077; mkdir -p \"$1/downloads\"; chmod 700 \"$1\" \"$1/downloads\"; touch \"$1/downloads.json\" \"$1/offline-sessions.json\" \"$1/server-url\"; chmod 600 \"$1/downloads.json\" \"$1/offline-sessions.json\" \"$1/server-url\"", "omashelf-state", root.stateDirectory]
+    command: ["sh", "-c", "umask 077; mkdir -p \"$1/downloads\"; chmod 700 \"$1\" \"$1/downloads\"; touch \"$1/downloads.json\" \"$1/offline-sessions.json\" \"$1/server-url\"; chmod 600 \"$1/downloads.json\" \"$1/offline-sessions.json\" \"$1/server-url\"", "spokenshelf-state", root.stateDirectory]
   }
 
   Process {

@@ -6,7 +6,7 @@ import qs.Commons
 BarWidget {
   id: root
 
-  moduleName: "io.github.jxsparrou.omashelf"
+  moduleName: "io.github.jxsparrou.spokenshelf"
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
   property bool popupOpen: false
   property string page: "home"
@@ -14,7 +14,7 @@ BarWidget {
   function close() { popupOpen = false }
   function playBook(book, offline) {
     if (!service || !book) return
-    if (offline || service.isDownloaded(book.id)) service.playOffline(book.id, book._omashelfServer || "")
+    if (offline || service.isDownloaded(book.id)) service.playOffline(book.id, book._spokenShelfServer || "")
     else service.playItem(book)
     page = "player"
   }
@@ -28,7 +28,7 @@ BarWidget {
     bar: root.bar
     text: "󰁧"
     active: root.popupOpen
-    tooltipText: root.service && root.service.title ? root.service.title : (root.service && root.service.connected ? "OmaShelf" : "Connect OmaShelf")
+    tooltipText: root.service && root.service.title ? root.service.title : (root.service && root.service.connected ? "SpokenShelf" : "Connect SpokenShelf")
 
     onPressed: function(mouseButton) {
       if (!root.service) return
@@ -71,7 +71,7 @@ BarWidget {
           id: appTitle
           width: parent.width - headerActions.implicitWidth
           anchors.verticalCenter: parent.verticalCenter
-          text: "OmaShelf"
+          text: "SpokenShelf"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.subtitle

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.jxsparrou.omashelf",
-  "name": "OmaShelf",
+  "id": "io.github.jxsparrou.spokenshelf",
+  "name": "SpokenShelf",
   "version": "1.0.0",
   "author": "jxSparrou",
   "description": "A native Omarchy player for streaming, downloading, and syncing Audiobookshelf books.",
@@ -13,7 +13,7 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "OmaShelf",
+    "displayName": "SpokenShelf",
     "description": "Audiobookshelf library and playback controls",
     "category": "Media",
     "allowMultiple": false,

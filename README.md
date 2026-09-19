@@ -1,6 +1,6 @@
-# OmaShelf
+# SpokenShelf
 
-OmaShelf is a native Omarchy shell player for [Audiobookshelf](https://www.audiobookshelf.org/). Browse and search your library, resume in-progress books, stream or download audio, and keep listening progress synchronized with your server.
+SpokenShelf is a native Omarchy shell player for [Audiobookshelf](https://www.audiobookshelf.org/). Browse and search your library, resume in-progress books, stream or download audio, and keep listening progress synchronized with your server.
 
 ## Features
 
@@ -17,7 +17,7 @@ OmaShelf is a native Omarchy shell player for [Audiobookshelf](https://www.audio
 ## Requirements
 
 - Omarchy with the plugin-capable shell.
-- An Audiobookshelf server. OmaShelf is tested against Audiobookshelf 2.36.1.
+- An Audiobookshelf server. SpokenShelf is tested against Audiobookshelf 2.36.1.
 - `curl`, `zenity`, `secret-tool` (from `libsecret`), Python 3, and the Python `dbus-next` package.
 - Qt Multimedia support for the audio formats stored by your server.
 
@@ -27,23 +27,35 @@ Install missing command-line dependencies with:
 omarchy pkg add curl zenity libsecret python python-dbus-next
 ```
 
-OmaShelf does not install packages, request elevated privileges, or modify system configuration.
+SpokenShelf does not install packages, request elevated privileges, or modify system configuration.
 
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/jxsparrou/omashelf.git --enable
+omarchy plugin add https://github.com/jxsparrou/spokenshelf.git --enable
 ```
 
 Add the widget to the bar if it is not inserted automatically:
 
 ```sh
-omarchy bar put io.github.jxsparrou.omashelf --section right
+omarchy bar put io.github.jxsparrou.spokenshelf --section right
 ```
+
+### Replacing OmaShelf
+
+If you installed the project before it was renamed, remove the old plugin before installing SpokenShelf:
+
+```sh
+omarchy plugin remove io.github.jxsparrou.omashelf --yes
+omarchy plugin add https://github.com/jxsparrou/spokenshelf.git --enable --yes
+omarchy bar put io.github.jxsparrou.spokenshelf --section right
+```
+
+The rename does not remove saved credentials, downloads, or queued listening progress.
 
 ## Connect
 
-Open OmaShelf from the status bar and enter your Audiobookshelf server URL. Then use either:
+Open SpokenShelf from the status bar and enter your Audiobookshelf server URL. Then use either:
 
 - Your Audiobookshelf username and password.
 - An Audiobookshelf API token.
@@ -57,7 +69,7 @@ Username and password credentials are sent only to the configured server's `/log
 - **Offline** lists downloaded books.
 - Selecting a downloaded book from any page prefers its local audio file.
 - **Playing** provides book and chapter seeking, transport controls, volume, source status, and downloads.
-- Hardware play/pause keys work through MPRIS while OmaShelf has a loaded book.
+- Hardware play/pause keys work through MPRIS while SpokenShelf has a loaded book.
 - Use **Log out** in the panel header to forget the current server credentials and connect to another server. Downloads are kept.
 
 Downloads and queued offline sessions are stored under `~/.local/state/omarchy-audiobookshelf/`. The state directory is restricted to the current user. Downloads can be large and are not removed automatically.
@@ -67,7 +79,7 @@ Downloads and queued offline sessions are stored under `~/.local/state/omarchy-a
 Remove the plugin:
 
 ```sh
-omarchy plugin remove io.github.jxsparrou.omashelf
+omarchy plugin remove io.github.jxsparrou.spokenshelf
 ```
 
 Optional: remove downloaded books and local state:
@@ -88,7 +100,7 @@ secret-tool clear service omarchy-audiobookshelf server https://your-server.exam
 - Passwords are not persisted.
 - Cover images, library metadata, audio, progress, and login requests communicate directly with the configured Audiobookshelf server.
 - Cover artwork uses Audiobookshelf's unauthenticated item-cover endpoint; audio and API requests are authenticated.
-- Qt Multimedia cannot attach custom HTTP headers, so authenticated streaming URLs contain the token in their query string. OmaShelf rejects absolute audio URLs outside the configured server before attaching credentials.
+- Qt Multimedia cannot attach custom HTTP headers, so authenticated streaming URLs contain the token in their query string. SpokenShelf rejects absolute audio URLs outside the configured server before attaching credentials.
 - The local MPRIS bridge publishes the current title, author, cover URL, duration, position, playback state, and volume on the user's session D-Bus so desktop media controls can work.
 - Download metadata and queued progress include library details and listening history and are stored in user-only local state files.
 

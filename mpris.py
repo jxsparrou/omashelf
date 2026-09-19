@@ -10,14 +10,14 @@ from dbus_next.constants import PropertyAccess
 from dbus_next.service import ServiceInterface, dbus_property, method, signal
 
 
-PLAYER_NAME = "org.mpris.MediaPlayer2.omashelf"
+PLAYER_NAME = "org.mpris.MediaPlayer2.spokenshelf"
 OBJECT_PATH = "/org/mpris/MediaPlayer2"
 
 
 async def ipc(action, *args):
     process = await asyncio.create_subprocess_exec(
         "omarchy-shell",
-        "omashelf",
+        "spokenshelf",
         action,
         *(str(arg) for arg in args),
         stdout=asyncio.subprocess.PIPE,
@@ -53,7 +53,7 @@ class MprisRoot(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def Identity(self) -> "s":
-        return "OmaShelf"
+        return "SpokenShelf"
 
     @dbus_property(access=PropertyAccess.READ)
     def DesktopEntry(self) -> "s":
